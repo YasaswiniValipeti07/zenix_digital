@@ -99,13 +99,16 @@ The included Django development settings are for local prototyping only. Before 
 
 ## Deploying to Vercel
 
-Vercel detects Django from the root `manage.py` and the configured `WSGI_APPLICATION`; a custom `vercel.json` is not required for the current Vercel Django runtime. Configure these values in the Vercel project's **Settings → Environment Variables** for Production (and Preview if used):
+Vercel detects Django from the root `manage.py` and the configured `WSGI_APPLICATION`. The `pyproject.toml` build hook runs the additive Django migrations before the deployment serves requests; this prevents a first-request 500 such as `no such table: monitor_brand` when the deployment has no local SQLite file. No custom `vercel.json` is needed for this Django runtime.
 
-- `SECRET_KEY`: a unique, random Django secret. Do not use the development fallback or commit the real value.
+First provision a managed PostgreSQL database (for example, connect a Postgres/Neon storage integration to the Vercel project) and copy its pooled or serverless connection URL. Configure these values in Vercel **Project → Settings → Environment Variables** for Production (and Preview if needed):
+
+- `SECRET_KEY`: one generated, stable, random Django secret. Keep it private and do not regenerate it for each deploy.
 - `DEBUG`: `False`.
-- `ALLOWED_HOSTS`: `.vercel.app` (add any custom hostnames, comma-separated).
-- `CSRF_TRUSTED_ORIGINS`: `https://your-production-domain.example` if using a custom domain; the deployment's `VERCEL_URL` is also allowed automatically.
+- `DATABASE_URL`: a persistent managed PostgreSQL connection string. Vercel's SQLite filesystem is not durable/writable across serverless invocations. The build migration will run against this database, so back up any existing remote data and use a database dedicated to this app.
+- `ALLOWED_HOSTS`: optional comma-separated extra hosts; `*.vercel.app` and the current `VERCEL_URL` are included automatically.
+- `CSRF_TRUSTED_ORIGINS`: optional comma-separated HTTPS origins when using a custom domain.
 
-Redeploy after adding environment variables. `STATIC_ROOT` is set so Vercel can collect Django app static files during its build. If the build log reports `SECRET_KEY is required for production`, the Vercel environment variable is missing or was not applied to that deployment target.
+Redeploy after adding the environment variables. `STATIC_ROOT` allows Vercel to collect Django static assets. `requirements.txt` includes `dj-database-url` and `psycopg` to connect to PostgreSQL. On Vercel, `DATABASE_URL` is mandatory: without it Django now stops with a clear configuration error rather than trying to open SQLite under the read-only `/var/task` deployment bundle (the cause of `sqlite3.OperationalError: unable to open database file`). Locally, development continues to use `db.sqlite3`.
 
-**Database limitation:** SQLite inside a Vercel deployment is not a durable writable database; serverless instances can be read-only/ephemeral and do not share state. Existing bundled SQLite rows may be present in a deployment, but brand registrations, imported candidates, and review updates are not reliably persistent across instances or redeploys. Configure a managed PostgreSQL database and a Django database URL adapter before using this app for persistent production data. Applying migrations to local `db.sqlite3` does not provision the remote database.
+If a deployment still shows a 500 after setup, open **Vercel → Deployments → latest deployment → Functions/Runtime Logs** and use the first Python traceback. Common actionable messages are missing `SECRET_KEY`, failed PostgreSQL connection/credentials, or database migrations failing during the build.
