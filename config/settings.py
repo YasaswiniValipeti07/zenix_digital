@@ -99,7 +99,13 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+import os
 
+SECRET_KEY = os.environ["SECRET_KEY"]
+DEBUG = os.environ.get("DEBUG", "False") == "True"
+ALLOWED_HOSTS = os.environ.get(
+    "ALLOWED_HOSTS", ""
+).split(",")
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
