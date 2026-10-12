@@ -1,0 +1,27 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Local database and uploaded files
+db.sqlite3
+db.sqlite3-journal
+media/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Generated static files
+staticfiles/
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

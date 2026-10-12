@@ -1,0 +1,2 @@
+Django==5.2.18
+rapidfuzz==3.14.5

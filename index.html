@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Risk Protection Platform</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Digital Risk Protection Platform</h1>
+        <p>Brand Security Monitoring Dashboard</p>
+    </header>
+
+    <main>
+        <h2>Dashboard Overview</h2>
+
+        <section class="dashboard-cards">
+            <div class="card blue">
+                <h3>Accounts Checked</h3>
+                <p class="number">120</p>
+            </div>
+
+            <div class="card green">
+                <h3>Official Accounts</h3>
+                <p class="number">85</p>
+            </div>
+
+            <div class="card red">
+                <h3>Accounts Needing Review</h3>
+                <p class="number">35</p>
+            </div>
+        </section>
+
+        <section class="monitoring">
+            <h2>Register Your Brand</h2>
+            <p>Enter your brand details to prepare for monitoring.</p>
+
+            <form id="brandForm">
+                <label for="brandName">Brand Name</label>
+                <input
+                    type="text"
+                    id="brandName"
+                    placeholder="Example: NovaPay"
+                    required
+                >
+
+                <label for="officialAccounts">Official Usernames</label>
+                <input
+                    type="text"
+                    id="officialAccounts"
+                    placeholder="Example: novapay, novapay_india"
+                >
+
+                <button type="submit">Register Brand</button>
+            </form>
+
+            <div id="result" class="result" hidden></div>
+        </section>
+    </main>
+
+    <script>
+        const form = document.getElementById("brandForm");
+
+        form.addEventListener("submit", function(event) {
+            event.preventDefault();
+
+            const brandName =
+                document.getElementById("brandName").value.trim();
+
+            const accounts =
+                document.getElementById("officialAccounts").value.trim();
+
+            const result = document.getElementById("result");
+
+            if (brandName === "") {
+                return;
+            }
+
+            result.replaceChildren();
+
+            const heading = document.createElement("h3");
+            heading.textContent = "Brand Registered Successfully!";
+
+            const brand = document.createElement("p");
+            brand.textContent = "Brand Name: " + brandName;
+
+            const usernames = document.createElement("p");
+            usernames.textContent =
+                "Official Usernames: " + (accounts || "Not provided");
+
+            const note = document.createElement("p");
+            note.textContent =
+                "Demo only: details are not saved permanently and live monitoring is not connected.";
+
+            result.append(heading, brand, usernames, note);
+            result.hidden = false;
+        });
+    </script>
+</body>
+</html>
