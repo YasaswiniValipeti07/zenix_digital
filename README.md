@@ -96,3 +96,16 @@ No scheduler runs because no source integrations are configured. A future author
 ## Production limitations and security
 
 The included Django development settings are for local prototyping only. Before deployment, use a secret key from an environment variable, disable `DEBUG`, configure `ALLOWED_HOSTS`, HTTPS/security settings, a production database, and authentication/authorization for reviewers. Do not commit credentials or API tokens. No third-party API integrations are configured in this project.
+
+## Deploying to Vercel
+
+Vercel detects Django from the root `manage.py` and the configured `WSGI_APPLICATION`; a custom `vercel.json` is not required for the current Vercel Django runtime. Configure these values in the Vercel project's **Settings → Environment Variables** for Production (and Preview if used):
+
+- `SECRET_KEY`: a unique, random Django secret. Do not use the development fallback or commit the real value.
+- `DEBUG`: `False`.
+- `ALLOWED_HOSTS`: `.vercel.app` (add any custom hostnames, comma-separated).
+- `CSRF_TRUSTED_ORIGINS`: `https://your-production-domain.example` if using a custom domain; the deployment's `VERCEL_URL` is also allowed automatically.
+
+Redeploy after adding environment variables. `STATIC_ROOT` is set so Vercel can collect Django app static files during its build. If the build log reports `SECRET_KEY is required for production`, the Vercel environment variable is missing or was not applied to that deployment target.
+
+**Database limitation:** SQLite inside a Vercel deployment is not a durable writable database; serverless instances can be read-only/ephemeral and do not share state. Existing bundled SQLite rows may be present in a deployment, but brand registrations, imported candidates, and review updates are not reliably persistent across instances or redeploys. Configure a managed PostgreSQL database and a Django database URL adapter before using this app for persistent production data. Applying migrations to local `db.sqlite3` does not provision the remote database.

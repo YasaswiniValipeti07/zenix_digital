@@ -11,6 +11,9 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -19,13 +22,39 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-0(7fk8a8+*t6j7+f3($&$4wz)0pfinn&9mhwq&majpvlsc51!g'
+# Vercel supplies VERCEL=1 and VERCEL_URL. A production secret must be configured
+# in the Vercel project's Environment Variables; local development has a fallback.
+ON_VERCEL = os.environ.get("VERCEL") == "1"
+DEBUG = os.environ.get("DEBUG", "False" if ON_VERCEL else "True").lower() in {
+    "1", "true", "yes", "on"
+}
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY:
+    if ON_VERCEL or not DEBUG:
+        raise ImproperlyConfigured(
+            "SECRET_KEY is required for production. Set it in the deployment environment."
+        )
+    SECRET_KEY = "django-insecure-local-development-only-change-before-deploying"
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+default_hosts = ["localhost", "127.0.0.1", "[::1]"]
+if ON_VERCEL:
+    default_hosts.append(".vercel.app")
+configured_hosts = [
+    host.strip()
+    for host in os.environ.get("ALLOWED_HOSTS", "").split(",")
+    if host.strip()
+]
+ALLOWED_HOSTS = list(dict.fromkeys([*default_hosts, *configured_hosts]))
 
-ALLOWED_HOSTS = []
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+vercel_url = os.environ.get("VERCEL_URL", "").strip()
+if ON_VERCEL and vercel_url:
+    ALLOWED_HOSTS = list(dict.fromkeys([*ALLOWED_HOSTS, vercel_url]))
+    CSRF_TRUSTED_ORIGINS.append(f"https://{vercel_url}")
 
 
 # Application definition
@@ -99,13 +128,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-import os
-
-SECRET_KEY = os.environ["SECRET_KEY"]
-DEBUG = os.environ.get("DEBUG", "False") == "True"
-ALLOWED_HOSTS = os.environ.get(
-    "ALLOWED_HOSTS", ""
-).split(",")
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
@@ -121,7 +143,8 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
