@@ -1,24 +1,48 @@
 const express = require("express");
 const { createClient } = require("@supabase/supabase-js");
-const csvStringify = require("csv-stringify/sync");
-const fs = require("fs");
-const path = require("path");
+const { parse: parseCsvRows } = require("csv-parse/sync");
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-const supabaseUrl = process.env.SUPABASE_URL || "https://your-project.supabase.co";
-const supabaseKey = process.env.SUPABASE_ANON_KEY || "your-anon-key";
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const supabase = supabaseUrl && supabaseKey
+  ? createClient(supabaseUrl, supabaseKey)
+  : null;
+const allowedOrigins = [
+  ...(process.env.FRONTEND_URL || "").split(","),
+  ...(process.env.ALLOWED_ORIGINS || "").split(","),
+]
+  .map((origin) => origin.trim().replace(/\/+$/, ""))
+  .filter(Boolean);
+if (process.env.NODE_ENV !== "production") {
+  allowedOrigins.push("http://localhost:5173", "http://127.0.0.1:5173");
+}
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
+  const origin = req.get("Origin");
+  if (origin && allowedOrigins.includes(origin.replace(/\/+$/, ""))) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Vary", "Origin");
+  } else if (origin) {
+    return res.status(403).json({ error: "This origin is not allowed." });
+  }
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") {
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     return res.status(204).end();
+  }
+  next();
+});
+
+app.use((req, res, next) => {
+  if (req.path !== "/" && req.path !== "/health" && !supabase) {
+    return res.status(503).json({
+      error: "Database is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY on the backend.",
+    });
   }
   next();
 });
@@ -32,6 +56,14 @@ app.get("/", (req, res) => {
     status: "running",
     version: "2.0.0",
     database: "Supabase",
+    database_configured: Boolean(supabase),
+  });
+});
+
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    database_configured: Boolean(supabase),
   });
 });
 
@@ -52,13 +84,15 @@ app.get("/brands", async (req, res) => {
     const brandIds = brands.map((b) => b.id);
     let resultCounts = {};
     if (brandIds.length > 0) {
-      const { count, error: countError } = await supabase
-        .from("monitoring_results")
-        .select("brand", { count: "exact", head: true })
-        .in("brand", brandIds);
-      if (!countError) {
-        brands.forEach((b) => (resultCounts[b.id] = count || 0));
-      }
+      const counts = await Promise.all(brands.map(async (brand) => {
+        const { count, error } = await supabase
+          .from("monitoring_results")
+          .select("id", { count: "exact", head: true })
+          .eq("brand_id", brand.id);
+        if (error) throw error;
+        return [brand.id, count || 0];
+      }));
+      resultCounts = Object.fromEntries(counts);
     }
 
     const result = brands.map((b) => ({
@@ -147,8 +181,9 @@ app.get("/results", async (req, res) => {
     let query = supabase.from("monitoring_results").select("*", { count: "exact" });
 
     // Filter by brand
-    if (req.query.brand) {
-      query = query.eq("brand", req.query.brand);
+    const brandId = req.query.brand_id || req.query.brand;
+    if (brandId) {
+      query = query.eq("brand_id", brandId);
     }
 
     // Filter by asset type
@@ -175,7 +210,7 @@ app.get("/results", async (req, res) => {
     }
 
     // Order by created_at desc
-    query = query.order("created_at", { ascending: false });
+    query = query.order("created_at", { ascending: false }).limit(200);
 
     const { data: results, error, count } = await query;
 
@@ -244,7 +279,7 @@ app.post("/results/scan", async (req, res) => {
 
     for (const username of usernames) {
       // Run the analysis (local heuristic)
-      const assessment = analyzeCandidate(brand, {
+      const assessment = analyze_candidate(brand, {
         asset_type: asset_type || "social",
         username,
         source: "manual",
@@ -252,7 +287,7 @@ app.post("/results/scan", async (req, res) => {
 
       const { data, error } = await supabase
         .from("monitoring_results")
-        .insert([assessment])
+        .insert([{ brand_id, ...assessment }])
         .select()
         .single();
 
@@ -278,6 +313,9 @@ app.post("/results/update-review-status", async (req, res) => {
 
     if (!result_id || !review_status) {
       return res.status(400).json({ error: "result_id and review_status are required" });
+    }
+    if (!["pending", "under_review", "reviewed"].includes(review_status)) {
+      return res.status(400).json({ error: "review_status must be pending, under_review, or reviewed." });
     }
 
     const { data, error } = await supabase
@@ -325,13 +363,22 @@ app.post("/analyze", async (req, res) => {
     if (!brand_id) {
       return res.status(400).json({ error: "brand_id is required" });
     }
+    const candidateType = asset_type || "social";
+    if (!["social", "app"].includes(candidateType)) {
+      return res.status(400).json({ error: "asset_type must be social or app." });
+    }
+    if (!(candidateType === "app" ? app_name : username)?.trim()) {
+      return res.status(400).json({
+        error: candidateType === "app" ? "app_name is required." : "username is required.",
+      });
+    }
 
     // Get brand info
     const { data: brand, error: brandError } = await supabase.from("brands").select("*").eq("id", brand_id).single();
     if (brandError) throw brandError;
 
     const candidate = {
-      asset_type: asset_type || "social",
+      asset_type: candidateType,
       username: username || "",
       app_name: app_name || "",
       display_name: display_name || "",
@@ -402,7 +449,7 @@ app.post("/import/csv", async (req, res) => {
     const createdResults = [];
 
     for (const candidate of records) {
-      const assessment = analyzeCandidate(brand, {
+      const assessment = analyze_candidate(brand, {
         ...candidate,
         asset_type,
         source: "csv-import",
@@ -410,7 +457,7 @@ app.post("/import/csv", async (req, res) => {
 
       const { data, error } = await supabase
         .from("monitoring_results")
-        .insert([assessment])
+        .insert([{ brand_id, ...assessment }])
         .select()
         .single();
 
@@ -432,8 +479,23 @@ app.post("/import/csv", async (req, res) => {
 // Helper: parse CSV content
 function parseCsv(csvContent, assetType) {
   try {
+    if (typeof csvContent !== "string" || Buffer.byteLength(csvContent, "utf8") > 1_000_000) {
+      throw new Error("CSV content is required and must be no larger than 1 MB.");
+    }
+    if (!["social", "app"].includes(assetType)) {
+      throw new Error("asset_type must be social or app.");
+    }
+    const rows = parseCsvRows(csvContent, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+      bom: true,
+      max_records: 101,
+    });
+    if (rows.length > 100) {
+      throw new Error("CSV imports are limited to 100 candidate records.");
+    }
     const records = [];
-    const rows = csvParse(csvContent, { headers: true, skip_empty_lines: true, trim: true });
 
     for (const row of rows) {
       const record = {};
@@ -456,8 +518,8 @@ function parseCsv(csvContent, assetType) {
     }
 
     return records;
-  } catch (e) {
-    throw new Error(`CSV parse error: ${e.message}`);
+  } catch (error) {
+    throw new Error(`CSV parse error: ${error.message}`);
   }
 }
 
@@ -465,10 +527,11 @@ function parseCsv(csvContent, assetType) {
 // Start server
 // ---------------------------------------------------------------------------
 
-app.listen(port, () => {
-  console.log(`🚀 Sentinel API running at http://localhost:${port}`);
-  console.log(`📊 Database: Supabase`);
-  console.log(`🔍 Fuzzy matching: fuzzball`);
-});
+if (require.main === module) {
+  app.listen(port, () => {
+    console.log(`Sentinel API running at http://localhost:${port}`);
+    console.log(`Database configured: ${Boolean(supabase)}`);
+  });
+}
 
 module.exports = app;

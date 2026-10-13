@@ -1,19 +1,42 @@
 
 # Digital Risk Protection Platform (Prototype)
 
-Sentinel is a Django and SQLite prototype for trusted brand-asset management, explainable username/app candidate screening, reviewer investigations, and database-backed reports.
+Sentinel is a Vite frontend with an Express API and Supabase database for trusted brand-asset management and explainable candidate screening. A Django prototype remains in the repository for local reference; the Render/Vercel deployment uses the Node API.
 
 > **Scope:** This is not a live monitoring service and does not scrape social networks, messaging services, or app stores. The built-in detector is a local, deterministic heuristic using RapidFuzz and submitted evidence. No generative AI provider is connected. Results are leads for human review, never proof that an account is malicious.
 
 ## Requirements
 
-- Python 3.10 or later
-- pip
-- Dependencies listed in `requirements.txt`
+- Node.js 22.12 or later and npm for the Vite/Express deployment stack.
+- A Supabase project for database-backed API behavior.
+- Python 3.10 or later only if running the retained Django prototype.
 
-## Setup on Windows PowerShell
+## Run the Vite frontend and API locally on Windows PowerShell
 
-Open PowerShell in the project folder, then run:
+Install dependencies and create a local environment file:
+
+```powershell
+npm ci
+Copy-Item .env.example .env
+```
+
+Edit `.env` with the Supabase project URL and API key. Keep `.env` private. Then run the backend:
+
+```powershell
+npm start
+```
+
+In another terminal, start Vite and open <http://localhost:5173/>:
+
+```powershell
+npm run dev
+```
+
+Vite proxies `/api` requests to the local API on port 3000. Without Supabase settings, the API health route remains available and data routes report a clear configuration error.
+
+## Run the retained Django prototype locally
+
+The earlier Django application is retained in `monitor/` but is not used by the Vercel/Render deployment:
 
 ```powershell
 py -m venv .venv
@@ -24,15 +47,7 @@ python manage.py check
 python manage.py runserver
 ```
 
-If PowerShell blocks activation scripts, use the virtual-environment interpreter directly instead:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe manage.py migrate
-.\.venv\Scripts\python.exe manage.py runserver
-```
-
-Open <http://127.0.0.1:8000/>. The new migrations are additive and preserve existing brands/results. Back up `db.sqlite3` before applying pending schema changes. `migrate` writes to that SQLite file; only run it on a database you are authorized to change.
+Open <http://127.0.0.1:8000/>. Back up `db.sqlite3` before applying schema migrations.
 
 ## Demo
 
@@ -45,6 +60,8 @@ Open <http://127.0.0.1:8000/>. The new migrations are additive and preserve exis
 Brand registration uses Post/Redirect/Get and has case-insensitive duplicate protection. Submit each scan intentionally; scans are saved as separate result records.
 
 ## Features
+
+The Vite workspace supports brand registration, candidate analysis, recent findings, inventory, and review-status updates through the Express API. The following fuller workflow details describe the retained Django prototype:
 
 - Clean White + Royal Blue enterprise dashboard with eight connected pages: Security Overview, Brand Inventory, AI-assisted Threat Detection, Social Media Monitoring, App Risk Intelligence, Investigation Center, Reports & Analytics, and Settings & Integrations.
 - Database-backed KPI cards, inventory, queue and reports; no fabricated totals.
@@ -64,16 +81,23 @@ Invalid submissions are server-validated. Table search filters visible rows only
 
 ## Project structure
 
-- `config/` — Django project settings and root URL routing.
-- `monitor/` — models, core and portal views, forms, explainable detection service, migrations, tests, templates, and static CSS.
-- `db.sqlite3` — local development database.
-- `manage.py` — Django management entry point.
-- `name_detector.py`, `brand_checker.py`, `first_program.py`, root `index.html`, and root `style.css` — earlier project files retained; the dashboard served by Django uses `monitor/templates/index.html` and `monitor/static/monitor/style.css`.
-- `requirements.txt` — Python dependencies.
+- `src/` and root `index.html` — Vite frontend.
+- `index.js`, `detection.js`, and `risk.js` — Express API and explainable local analysis.
+- `supabase_schema.sql` — Supabase tables and views required by the API.
+- `render.yaml` — Render web-service blueprint for the API.
+- `vercel.json` and `vite.config.mjs` — Vercel static build and local API proxy.
+- `config/`, `monitor/`, and `manage.py` — retained Django prototype, not used by the split deployment.
 
 ## Checks and tests
 
-Run Django's checks and tests (tests use a temporary test database):
+Run the Node API tests and build the Vite frontend:
+
+```powershell
+npm test
+npm run build
+```
+
+For the retained Django prototype only, run its checks and tests (tests use a temporary test database):
 
 ```powershell
 python manage.py check
@@ -96,20 +120,32 @@ No scheduler runs because no source integrations are configured. A future author
 
 ## Production limitations and security
 
-The included Django development settings are for local prototyping only. Before deployment, use a secret key from an environment variable, disable `DEBUG`, configure `ALLOWED_HOSTS`, HTTPS/security settings, a production database, and authentication/authorization for reviewers. Do not commit credentials or API tokens. No third-party API integrations are configured in this project.
+This is a prototype, not a production-hardened service. The Express API currently has no user authentication or per-user authorization; CORS origin restrictions are not authentication. Add an appropriate authentication layer and Supabase Row Level Security policies before exposing sensitive data or using it with untrusted users. Keep database credentials server-side and never commit them. No third-party monitoring integrations are configured.
 
-## Deploying to Vercel
+## Deploying the frontend to Vercel and API to Render
 
-Vercel detects Django from the root `manage.py` and the configured `WSGI_APPLICATION`. The `pyproject.toml` build hook runs the additive Django migrations before the deployment serves requests; this prevents a first-request 500 such as `no such table: monitor_brand` when the deployment has no local SQLite file. No custom `vercel.json` is needed for this Django runtime.
+The deployable stack is **Vite static frontend → Express API → Supabase**. Vercel serves the built `dist/` files; Render runs `node index.js`. The frontend never receives the Supabase key.
 
-First provision a managed PostgreSQL database (for example, connect a Postgres/Neon storage integration to the Vercel project) and copy its pooled or serverless connection URL. Configure these values in Vercel **Project → Settings → Environment Variables** for Production (and Preview if needed):
+### 1. Prepare Supabase
 
-- `SECRET_KEY`: one generated, stable, random Django secret. Keep it private and do not regenerate it for each deploy.
-- `DEBUG`: `False`.
-- `DATABASE_URL`: a persistent managed PostgreSQL connection string. Vercel's SQLite filesystem is not durable/writable across serverless invocations. The build migration will run against this database, so back up any existing remote data and use a database dedicated to this app.
-- `ALLOWED_HOSTS`: optional comma-separated extra hosts; `*.vercel.app` and the current `VERCEL_URL` are included automatically.
-- `CSRF_TRUSTED_ORIGINS`: optional comma-separated HTTPS origins when using a custom domain.
+Create or open the Supabase project, then run `supabase_schema.sql` in its SQL Editor. Copy the project URL and the API key used by the backend. Do not commit either value. The schema must be installed before using the API.
 
-Redeploy after adding the environment variables. `STATIC_ROOT` allows Vercel to collect Django static assets. `requirements.txt` includes `dj-database-url` and `psycopg` to connect to PostgreSQL. On Vercel, `DATABASE_URL` is mandatory: without it Django now stops with a clear configuration error rather than trying to open SQLite under the read-only `/var/task` deployment bundle (the cause of `sqlite3.OperationalError: unable to open database file`). Locally, development continues to use `db.sqlite3`.
+### 2. Deploy the API on Render
 
-If a deployment still shows a 500 after setup, open **Vercel → Deployments → latest deployment → Functions/Runtime Logs** and use the first Python traceback. Common actionable messages are missing `SECRET_KEY`, failed PostgreSQL connection/credentials, or database migrations failing during the build.
+Create a Render **Blueprint** from this repository and use `render.yaml`, or create a Node web service with:
+
+- Build command: `npm ci`
+- Start command: `npm start`
+- Health check path: `/health`
+
+Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` in the Render service environment. The service listens on Render's `PORT`. Render's free service may sleep between requests.
+
+### 3. Deploy the frontend on Vercel
+
+Import the same repository into Vercel. Use the repository root; `vercel.json` configures the Vite build (`npm ci`, `npm run build`, output `dist`). Add this Vercel environment variable before deploying:
+
+- `VITE_API_BASE_URL`: the Render service origin, for example `https://sentinel-api.onrender.com` (no trailing slash).
+
+After Vercel assigns the frontend URL, set `FRONTEND_URL` on Render to that exact origin, such as `https://your-project.vercel.app`. For additional preview/custom-domain origins, set `ALLOWED_ORIGINS` to a comma-separated list. Redeploy/restart the Render service after changing its environment.
+
+For local development, run `npm start` in one terminal and `npm run dev` in another. Vite proxies `/api` calls to `http://localhost:3000`; set `API_PROXY_TARGET` if your local API uses another address. Run `npm test` and `npm run build` to verify the project.

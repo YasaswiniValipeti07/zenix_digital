@@ -19,12 +19,11 @@ CREATE TABLE IF NOT EXISTS brands (
   brand_name VARCHAR(100) NOT NULL,
   official_accounts TEXT NOT NULL DEFAULT '',
   official_urls TEXT NOT NULL DEFAULT '',
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  CONSTRAINT unique_brand_name_case_insensitive UNIQUE (LOWER(brand_name))
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Index for case-insensitive searches
-CREATE INDEX IF NOT EXISTS idx_brands_lower_name ON brands (LOWER(brand_name));
+-- Enforce case-insensitive brand uniqueness and speed up lookups.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_brands_unique_lower_name ON brands (LOWER(brand_name));
 
 -- ============================================================
 -- Table: official_apps

@@ -1,11 +1,16 @@
 {
   "name": "digital-risk-protection",
   "version": "1.0.0",
-  "description": "Sentinel is a Django and SQLite prototype for trusted brand-asset management, explainable username/app candidate screening, reviewer investigations, and database-backed reports.",
+  "description": "Sentinel is a Vite frontend and Express API for explainable brand-asset risk screening.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node index.js"
+    "test": "node --test",
+    "dev": "vite",
+    "build": "vite build",
+    "start": "node --env-file-if-exists=.env index.js"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   },
   "repository": {
     "type": "git",
@@ -26,5 +31,8 @@
     "express-rate-limit": "^8.7.1",
     "fuzzball": "^2.2.6",
     "regexjs": "^0.0.1"
+  },
+  "devDependencies": {
+    "vite": "^8.3.4"
   }
 }

@@ -236,8 +236,16 @@ const analyze_candidate = (brand, candidate) => {
     classification = "Low Risk";
   }
 
-  const supplied_fields = Object.values(candidate).filter((v) => _text(v).length > 0).length;
-  const confidence = Math.min(95, 35 + supplied_fields * 10 + signals.length * 5);
+  const supplied_fields = [
+    candidate.username,
+    candidate.app_name,
+    candidate.display_name,
+    candidate.description,
+    candidate.publisher,
+    candidate.package_id,
+    candidate.listing_url,
+  ].filter((value) => _text(value).length > 0).length;
+  let confidence = Math.min(95, 35 + supplied_fields * 10 + signals.length * 5);
   if (supplied_fields <= 1) {
     confidence = Math.min(confidence, 45);
   }
