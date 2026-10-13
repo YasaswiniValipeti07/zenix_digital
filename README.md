@@ -1,3 +1,4 @@
+
 # Digital Risk Protection Platform (Prototype)
 
 Sentinel is a Django and SQLite prototype for trusted brand-asset management, explainable username/app candidate screening, reviewer investigations, and database-backed reports.
